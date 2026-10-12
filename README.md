@@ -2,11 +2,11 @@
 
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/sepehr071/bale-mcp/main/.github/banner.png" alt="bale-mcp: let your AI agent message you and wait for your answer on Bale" width="100%">
+<img src="https://raw.githubusercontent.com/sepehr071/bale-mcp/main/.github/banner.png" alt="bale-mcp: unofficial Bale MCP server for Claude, Cursor and Copilot" width="100%">
 
-# 💬 bale-mcp
+# 💬 bale-mcp: Bale MCP server for AI agents
 
-**Talk to your AI agents on Bale, privately.**<br>
+**Unofficial Bale (<span dir="rtl">بله</span>) MCP server: talk to your AI agents on Iran's Bale messenger, privately.**<br>
 Let Claude, Cursor or Copilot read what people send your Bale bot, keep a searchable history,<br>
 reply, send files, and ask you a question and wait for your tap, all from your own machine.
 
@@ -19,9 +19,25 @@ reply, send files, and ask you a question and wait for your tap, all from your o
 [![Install in Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=bale&config=eyJjb21tYW5kIjoidXZ4IiwiYXJncyI6WyJiYWxlLW1jcCJdLCJlbnYiOnsiQkFMRV9CT1RfVE9LRU4iOiJ5b3VyLWJvdC10b2tlbiIsIkJBTEVfQUxMT1dFRF9DSEFUUyI6InlvdXItY2hhdC1pZCJ9fQ==)
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_bale--mcp-0098FF?style=flat-square&logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect/mcp/install?name=bale&config=%7B%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%22bale-mcp%22%5D%2C%22env%22%3A%7B%22BALE_BOT_TOKEN%22%3A%22your-bot-token%22%2C%22BALE_ALLOWED_CHATS%22%3A%22your-chat-id%22%7D%7D)
 
-[Quick start](#quick-start) · [What it can do](#what-it-can-do) · [Privacy](#privacy-and-security) · [Tools](#tools) · [FAQ](#faq) · [فارسی](#فارسی)
+[Quick start](#quick-start) · [What it can do](#what-bale-mcp-can-do) · [Privacy](#privacy-and-security) · [Tools](#tools) · [FAQ](#faq) · [فارسی](#فارسی)
 
 </div>
+
+---
+
+## For AI agents
+
+- **What:** MCP server that lets an agent use a Bale (bale.ai, Iran) bot over the official Bot API: read, search and answer messages, send files, ask a question and wait for the answer. Persian-aware search.
+- **Install:** `uvx bale-mcp` (needs [uv](https://docs.astral.sh/uv/getting-started/installation/), Python 3.10+; or `pip install bale-mcp`). Transport: stdio.
+- **Claude Code:** `claude mcp add bale -e BALE_BOT_TOKEN=123456789:your-token -e BALE_ALLOWED_CHATS=your-chat-id -- uvx bale-mcp`
+- **Auth:** `BALE_BOT_TOKEN` (required, from @botfather); `BALE_ALLOWED_CHATS` (recommended chat allowlist); `BALE_MCP_DB`, `BALE_MCP_PROXY` (optional).
+- **Access:** reads and sends as the user's bot. 9 read-only tools and 4 send tools (`bot_send_message`, `bot_send_file`, `bot_edit_message`, `bot_delete_message`). Ask the user before any send tool.
+- **Tools:** 13, prefixed `bot_*`. Start with `bot_get_new_messages`, `bot_list_chats`, `bot_read_chat`, `bot_search_messages`, `bot_wait_for_reply`.
+- **Typical sequence:** `bot_send_message` (with buttons) -> `bot_wait_for_reply` (pass `after_message_id`); or `bot_get_new_messages` -> `bot_read_chat` -> `bot_send_message`.
+- **Use when:** the agent should report progress, ask for approval or take instructions on Bale while the user is away.
+- **Do not use when:** you need the user's personal chats (Bot API only sees what people send the bot) or a messenger other than Bale.
+- **Output:** compact JSON; chat ids are numbers or `@username`; messages carry `message_id`, `kind`, sender and text.
+- **Machine-readable:** [server.json](server.json); catalog of all Iran MCP servers: [awesome-iran-mcp](https://github.com/sepehr071/awesome-iran-mcp) (`TOOLS.md`, `servers.json`, `llms.txt`).
 
 ---
 
@@ -46,7 +62,7 @@ your own Bale bot:
 
 <sub>The tool calls are real; the reply shape is from a live test against tapi.bale.ai on 2026-10-03.</sub>
 
-## What it can do
+## What bale-mcp can do
 
 - 📥 **Read** what people send your bot, from every chat, with sender, kind and chat id
 - 🗂️ **Keep a history**: the Bot API forgets messages after 24 hours; `bale-mcp` keeps them in a local SQLite file
@@ -227,6 +243,20 @@ All return compact structured JSON, so they don't flood the agent's context.
 ## FAQ
 
 <details>
+<summary><b>Is there a Bale MCP server for Claude, Cursor or Copilot?</b></summary>
+
+Yes, this one. It is unofficial and uses Bale's public Bot API with your own bot token. Install it with
+`uvx bale-mcp` and add it to your MCP client as shown in [Quick start](#quick-start).
+</details>
+
+<details>
+<summary><b>Is it free and safe?</b></summary>
+
+It is free (MIT) and runs on your machine; the only host it talks to is `tapi.bale.ai`. Set `BALE_ALLOWED_CHATS`
+so strangers who find your bot cannot reach your agent. See [Privacy](#privacy-and-security).
+</details>
+
+<details>
 <summary><b>Can it read my personal chats?</b></summary>
 
 No. It uses the official Bot API, so it only sees what people send to your bot, and messages in groups and channels
@@ -276,11 +306,13 @@ npx @modelcontextprotocol/inspector -e BALE_BOT_TOKEN=123456789:your-token uvx b
 | `BALE_MCP_DB` | `~/.bale-mcp/messages.db` | Local history file; `:memory:` keeps nothing on disk |
 | `BALE_MCP_PROXY` | unset | HTTP proxy for every request, e.g. `http://user:pass@host:port` |
 
-## فارسی
+<a id="فارسی"></a>
+
+## فارسی: سرور MCP بله
 
 <div dir="rtl">
 
-**bale-mcp** به دستیار هوش مصنوعی شما (Claude، Cursor، Copilot و ...) اجازه می&zwnj;دهد از طریق بازوی (ربات) بله خودتان
+**bale-mcp** یک سرور MCP غیررسمی برای پیام&zwnj;رسان بله در ایران است و به دستیار هوش مصنوعی شما (Claude، Cursor، Copilot و ...) اجازه می&zwnj;دهد از طریق بازوی (ربات) بله خودتان
 پیام&zwnj;ها را بخواند، در آن&zwnj;ها جستجو کند، پاسخ و فایل بفرستد، و از شما سؤال بپرسد و منتظر جوابتان بماند.
 
 - روی سیستم خود شما اجرا می&zwnj;شود و جز سرور بله به هیچ جای دیگری داده نمی&zwnj;فرستد.
@@ -321,10 +353,17 @@ it. Issues and PRs are welcome.
 Releases: bump the version in `pyproject.toml` and `server.json`, then push a `v*` tag. GitHub Actions tests,
 publishes to PyPI and the [MCP Registry](https://registry.modelcontextprotocol.io), and creates the GitHub Release.
 
+## Related servers
+
+- [PayPing MCP server](https://github.com/sepehr071/payping-mcp) for reading sales and creating invoices in a PayPing merchant account, the other account tool in this family.
+- More Iranian MCP servers (shopping, travel, books, health): [awesome-iran-mcp](https://github.com/sepehr071/awesome-iran-mcp).
+
 ## Disclaimer
 
 Unofficial and not affiliated with or endorsed by Bale. It uses Bale's official, public
 [Bot API](https://docs.bale.ai/). Follow Bale's terms, and don't use it to spam people.
+
+If this saves you clicks, a star helps others find it.
 
 ## License
 
