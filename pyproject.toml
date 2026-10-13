@@ -1,11 +1,11 @@
 [project]
 name = "bale-mcp"
-version = "0.1.1"
+version = "0.1.2"
 description = "Private, local MCP server for Bale (bale.ai) bots: let AI agents read, search and answer messages, ask and wait for replies, and send or download files through the official Bot API."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{ name = "Sepehr", email = "sepehr@nextofx.com" }]
+authors = [{ name = "Sepehr Radmard", email = "sepehrr80@gmail.com" }]
 requires-python = ">=3.10"
 keywords = ["mcp", "model-context-protocol", "bale", "messenger", "bot", "iran", "ai-agent", "human-in-the-loop", "privacy"]
 classifiers = [
