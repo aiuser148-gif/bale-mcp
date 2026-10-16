@@ -15,13 +15,17 @@ from .registry import tool
 
 BOT_BASE = "https://tapi.bale.ai"
 MAX_UPLOAD = 50 * 1024 * 1024  # Bale's documented bot upload limit
+FILES_DIR = Path.home() / ".bale-mcp" / "files"  # bot_download_file saves here by default
 
 ChatId = Annotated[
-    int | str,
-    Field(
-        description="Chat id (number from bot_get_new_messages or bot_list_chats, e.g. 123456789) or a public channel/group username like '@mychannel'."
-    ),
+    int | str, Field(description="Chat id (number, e.g. 123456789) or public '@channel' username. See bot_list_chats.")
 ]
+
+
+def send_roots() -> list[Path]:
+    """Folders bot_send_file may read from: BALE_MCP_SEND_DIRS (os.pathsep-separated), else downloads + cwd."""
+    raw = [s.strip() for s in os.environ.get("BALE_MCP_SEND_DIRS", "").split(os.pathsep) if s.strip()]
+    return [Path(s).expanduser().resolve() for s in raw] or [FILES_DIR.resolve(), Path.cwd().resolve()]
 
 
 def token() -> str:
@@ -117,14 +121,14 @@ def _sent(m: dict[str, Any]) -> dict[str, Any]:
 
 @tool("Bot: who am I")
 async def bot_get_me() -> dict[str, Any]:
-    """Check BALE_BOT_TOKEN and show the bot's id, username and name. Use first to confirm the bot works."""
+    """Check BALE_BOT_TOKEN and show the bot's id, username and name."""
     me = await call("getMe")
     return {k: me.get(k) for k in ("id", "username", "first_name", "is_bot") if k in me}
 
 
 @tool("Bot: chat info")
 async def bot_get_chat(chat_id: ChatId) -> dict[str, Any]:
-    """Get a chat's type, title or name, username and description, as seen by the bot."""
+    """Get a chat's type, title or name, username and description."""
     c = await call("getChat", {"chat_id": chat_id})
     out = _chat(c) or {}
     if c.get("description"):
@@ -152,15 +156,15 @@ async def bot_send_message(
     buttons: Annotated[
         list[list[Annotated[str, Field(min_length=1)]]] | None,
         Field(
-            description="Inline buttons as rows of labels, e.g. [['Yes', 'No']]. A press arrives as a message of kind 'button' whose text is the label (cut to 64 bytes); bot_wait_for_reply returns it."
+            description="Inline buttons as rows of labels, e.g. [['Yes', 'No']]. A press arrives as kind 'button' (text = label, cut to 64 bytes)."
         ),
     ] = None,
 ) -> dict[str, Any]:
-    """Send a text message from the bot. Sends a real message. Confirm recipient and text with the user before calling.
+    """Send a real text message from the bot. Confirm recipient and text with the user first.
 
-    Bale formats all text as Markdown (*bold*, _italic_). The user must have started the bot first (sent it /start)
-    or the bot must be a member of the group/channel. To ask a question and get the answer, send it (with buttons
-    if the choices are fixed), then call bot_wait_for_reply with the returned message_id.
+    Text is Markdown (*bold*, _italic_). The user must have sent the bot /start first (or the bot is in the
+    group/channel). To ask a question, send it (buttons for fixed choices), then call bot_wait_for_reply with the
+    returned message_id.
     """
     markup = None
     if buttons:
@@ -183,17 +187,26 @@ METHOD = {
 @tool("Bot: send file", sends=True)
 async def bot_send_file(
     chat_id: ChatId,
-    kind: Annotated[FileKind, Field(description="How Bale should show the file.")],
-    source: Annotated[str, Field(min_length=1, description="An http(s) URL, or a path to a local file (max 50 MB).")],
+    kind: Annotated[FileKind, Field(description="How Bale shows the file.")],
+    source: Annotated[
+        str, Field(min_length=1, description="http(s) URL, or local file path (max 50 MB; see BALE_MCP_SEND_DIRS).")
+    ],
     caption: Annotated[str | None, Field(max_length=1024, description="Optional caption.")] = None,
 ) -> dict[str, Any]:
-    """Send a photo, document, video, audio or voice file from the bot. Sends a real message. Confirm recipient and file with the user before calling."""
+    """Send a real photo, document, video, audio or voice file from the bot. Confirm recipient and file with the user first.
+
+    Local paths must lie inside BALE_MCP_SEND_DIRS (default: the download folder and the working directory).
+    """
     params: dict[str, Any] = {"chat_id": chat_id, "caption": caption}
     if source.startswith(("http://", "https://")):
         params[kind] = source
         m = await call(METHOD[kind], params)
     else:
-        path = Path(source).expanduser()
+        path = Path(source).expanduser().resolve()  # resolve() follows symlinks, so a link cannot escape the roots
+        if not any(path.is_relative_to(root) for root in send_roots()):
+            raise ApiError(
+                f"{path.name} is outside the folders bot_send_file may read. Add its folder to BALE_MCP_SEND_DIRS."
+            )
         if not path.is_file():
             raise ApiError(f"File not found: {path}")
         size = path.stat().st_size
@@ -210,7 +223,7 @@ async def bot_edit_message(
     message_id: Annotated[int, Field(description="Id of a text message the bot sent.")],
     text: Annotated[str, Field(min_length=1, max_length=4096, description="New text.")],
 ) -> dict[str, Any]:
-    """Replace the text of a message the bot sent earlier. Changes a real message. Confirm with the user before calling."""
+    """Replace the text of a message the bot sent earlier. Changes a real message; confirm with the user first."""
     m = await call("editMessageText", {"chat_id": chat_id, "message_id": message_id, "text": text})
     store.edit(chat_id, message_id, text, unread=False)  # an '@channel' chat_id matches no stored row; fine
     return {
@@ -224,7 +237,7 @@ async def bot_delete_message(
     chat_id: ChatId,
     message_id: Annotated[int, Field(description="Message id to delete.")],
 ) -> dict[str, Any]:
-    """Delete a message in a chat where the bot may delete it (its own messages, or as admin). Cannot be undone; confirm with the user first."""
+    """Delete a message the bot may delete (its own, or as admin). Irreversible; confirm with the user first."""
     ok = await call("deleteMessage", {"chat_id": chat_id, "message_id": message_id})
     store.delete(chat_id, message_id)
     return {"deleted": bool(ok)}

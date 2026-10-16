@@ -211,7 +211,7 @@ Chat ids are numbers (they can exceed 32 bits), or `@username` for public channe
 | Tool | What it does |
 |---|---|
 | `bot_send_message` | Send text, optionally as a reply and with inline buttons |
-| `bot_send_file` | Send a photo, document, video, audio or voice file by URL or local path (max 50 MB) |
+| `bot_send_file` | Send a photo, document, video, audio or voice file by URL or local path (max 50 MB; local files only from `BALE_MCP_SEND_DIRS`) |
 | `bot_edit_message` | Replace the text of a message the bot sent |
 | `bot_delete_message` | Delete a message |
 </details>
@@ -237,6 +237,11 @@ All return compact structured JSON, so they don't flood the agent's context.
   anything older than that, or read by another program, is gone.
 - **One reader per bot.** Webhooks block `getUpdates`, and two programs polling the same token steal each other's
   updates. `bot_get_webhook_info` shows a webhook. Several `bale-mcp` processes may share one `BALE_MCP_DB`.
+- **Default limit is 20.** The read tools return at most 20 messages or chats unless you pass `limit`;
+  `bot_search_messages` cuts each text to `max_chars` (default 500).
+- **Downloads stop at 20 MB.** `bot_download_file` streams the file and aborts past that size.
+- **Sync errors don't hide history.** If pulling new updates fails (e.g. a webhook is set), `bot_list_chats`,
+  `bot_read_chat` and `bot_search_messages` still answer from the local store and add a `sync_error` note.
 - **Text is Markdown.** Bale formats every message: `*bold*`, `_italic_`.
 - **Button presses** come back as messages of kind `button` whose text is the label (cut to 64 bytes).
 
@@ -304,6 +309,7 @@ npx @modelcontextprotocol/inspector -e BALE_BOT_TOKEN=123456789:your-token uvx b
 | `BALE_BOT_TOKEN` | required | Bot token from @botfather |
 | `BALE_ALLOWED_CHATS` | unset (all chats) | Comma-separated chat ids or `@usernames`; all other chats are ignored and never messaged |
 | `BALE_MCP_DB` | `~/.bale-mcp/messages.db` | Local history file; `:memory:` keeps nothing on disk |
+| `BALE_MCP_SEND_DIRS` | `~/.bale-mcp/files` and the working directory | Folders (separated by `;` on Windows, `:` elsewhere) `bot_send_file` may upload local files from; symlinks are resolved, paths outside are refused |
 | `BALE_MCP_PROXY` | unset | HTTP proxy for every request, e.g. `http://user:pass@host:port` |
 
 <a id="فارسی"></a>

@@ -169,3 +169,38 @@ async def test_photo_then_download(client, api, tmp_path):
 async def test_download_refused(client, api, tmp_path):
     api["getFile"] = {"file_id": "big", "file_size": 30 * 1024 * 1024}
     assert "20 MB" in await error(client, "bot_download_file", {"file_id": "big", "folder": str(tmp_path)})
+
+
+async def test_download_streams_with_cap(client, api, tmp_path, monkeypatch):
+    monkeypatch.setattr(inbox, "MAX_DOWNLOAD", 8)
+    api["getFile"] = {"file_id": "big", "file_path": "x/huge.bin", "file_size": 4}  # server understates the size
+    api["huge.bin"] = lambda r: httpx.Response(200, content=b"0123456789")
+    assert "aborted" in await error(client, "bot_download_file", {"file_id": "big", "folder": str(tmp_path)})
+    assert list(tmp_path.iterdir()) == []
+
+
+async def test_download_network_error_keeps_proxy_hint(client, api, tmp_path):
+    api["getFile"] = {"file_id": "big", "file_path": "x/a.bin", "file_size": 4}
+
+    def boom(r):
+        raise httpx.ConnectError("down")
+
+    api["a.bin"] = boom
+    text = await error(client, "bot_download_file", {"file_id": "big", "folder": str(tmp_path)})
+    assert "BALE_MCP_PROXY" in text
+
+
+async def test_search_cuts_long_text_but_read_chat_keeps_it(client, api):
+    serve_updates(api, [upd(10, "needle " + "x" * 600)])
+    found = (await call(client, "bot_search_messages", {"query": "needle", "max_chars": 100}))["messages"][0]["text"]
+    assert len(found) < 130 and found.endswith("(+507 chars)")
+    whole = (await call(client, "bot_read_chat", {"chat_id": 111}))["messages"][0]["text"]
+    assert len(whole) == 607
+
+
+async def test_read_chat_falls_back_to_local_store_when_sync_fails(client, api):
+    api["getUpdates"] = lambda r: httpx.Response(409, json={"ok": False, "error_code": 409, "description": "Conflict"})
+    inbox.store.save(sent(1, "local"), outgoing=True)
+    out = await call(client, "bot_read_chat", {"chat_id": 111})
+    assert out["messages"][0]["text"] == "local"
+    assert "sync_error" in out

@@ -4,6 +4,8 @@ import httpx
 import pytest
 from conftest import FAKE_TOKEN
 
+from bale_mcp.server import STATEFUL_TOOLS
+
 pytestmark = pytest.mark.anyio
 
 SENDING = {"bot_send_message", "bot_send_file", "bot_edit_message", "bot_delete_message"}
@@ -43,7 +45,7 @@ async def test_annotations(client):
     assert set(tools) == SENDING | READING
     for name, t in tools.items():
         assert t.title and t.description, name
-        assert t.annotations.read_only_hint is (name not in SENDING), name
+        assert t.annotations.read_only_hint is (name not in SENDING | STATEFUL_TOOLS), name
         assert t.annotations.destructive_hint is (name in SENDING), name
 
 
@@ -125,7 +127,8 @@ async def test_send_file_by_url(client, api):
     assert api.body() == {"chat_id": "@chan", "caption": "hi", "photo": "https://example.com/a.jpg"}
 
 
-async def test_send_file_local_upload(client, api, tmp_path):
+async def test_send_file_local_upload(client, api, tmp_path, monkeypatch):
+    monkeypatch.setenv("BALE_MCP_SEND_DIRS", str(tmp_path))
     f = tmp_path / "report.pdf"
     f.write_bytes(b"%PDF-1.4 test")
     api["sendDocument"] = {**MEDIA, "message_id": 10, "document": {"file_id": "d"}}
@@ -135,7 +138,41 @@ async def test_send_file_local_upload(client, api, tmp_path):
     assert b"report.pdf" in body and b"%PDF-1.4 test" in body
 
 
-async def test_send_file_missing_local_file(client, api, tmp_path):
+async def test_send_file_outside_send_dirs_is_refused(client, api, tmp_path, monkeypatch):
+    allowed_dir, secret_dir = tmp_path / "ok", tmp_path / "secret"
+    allowed_dir.mkdir()
+    secret_dir.mkdir()
+    (secret_dir / "id_rsa").write_text("KEY")
+    monkeypatch.setenv("BALE_MCP_SEND_DIRS", str(allowed_dir))
+    args = {"chat_id": 1, "kind": "document", "source": str(secret_dir / "id_rsa")}
+    assert "BALE_MCP_SEND_DIRS" in await error(client, "bot_send_file", args)
+    args["source"] = str(allowed_dir / ".." / "secret" / "id_rsa")  # .. is resolved before the check
+    assert "BALE_MCP_SEND_DIRS" in await error(client, "bot_send_file", args)
+    try:
+        (allowed_dir / "link").symlink_to(secret_dir / "id_rsa")
+    except OSError:  # Windows without symlink privilege
+        pass
+    else:
+        args["source"] = str(allowed_dir / "link")
+        assert "BALE_MCP_SEND_DIRS" in await error(client, "bot_send_file", args)
+    assert api.calls == []
+
+
+async def test_send_file_default_roots_are_cwd_and_downloads(client, api, tmp_path, monkeypatch):
+    monkeypatch.delenv("BALE_MCP_SEND_DIRS", raising=False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "a.txt").write_text("x")
+    api["sendDocument"] = {**MEDIA, "message_id": 10, "document": {"file_id": "d"}}
+    await call(client, "bot_send_file", {"chat_id": 1, "kind": "document", "source": "a.txt"})
+    elsewhere = tmp_path.parent / "elsewhere.txt"
+    elsewhere.write_text("x")
+    assert "BALE_MCP_SEND_DIRS" in await error(
+        client, "bot_send_file", {"chat_id": 1, "kind": "document", "source": str(elsewhere)}
+    )
+
+
+async def test_send_file_missing_local_file(client, api, tmp_path, monkeypatch):
+    monkeypatch.setenv("BALE_MCP_SEND_DIRS", str(tmp_path))
     assert "File not found" in await error(
         client, "bot_send_file", {"chat_id": 1, "kind": "document", "source": str(tmp_path / "nope.pdf")}
     )

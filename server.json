@@ -8,13 +8,13 @@
     "source": "github"
   },
   "websiteUrl": "https://github.com/sepehr071/bale-mcp",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "bale-mcp",
-      "version": "0.1.2",
+      "version": "0.2.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
@@ -35,6 +35,12 @@
         {
           "name": "BALE_MCP_DB",
           "description": "Local message history file (default ~/.bale-mcp/messages.db); ':memory:' keeps nothing on disk.",
+          "isRequired": false,
+          "isSecret": false
+        },
+        {
+          "name": "BALE_MCP_SEND_DIRS",
+          "description": "Folders bot_send_file may upload local files from (os.pathsep-separated); default is the download folder and the working directory.",
           "isRequired": false,
           "isSecret": false
         },

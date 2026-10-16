@@ -61,17 +61,41 @@ def _get_client() -> tuple[httpx.AsyncClient, asyncio.Semaphore]:
     return _client, _limit
 
 
+def _network_error(e: httpx.RequestError, host: str | None) -> ApiError:
+    if isinstance(e, httpx.TimeoutException):
+        err = ApiError(f"{host} did not answer in time. Try again in a moment.")
+    else:
+        err = ApiError(
+            f"Could not reach {host} ({type(e).__name__}). Check the internet connection; "
+            "Bale may refuse some non-Iranian networks (set BALE_MCP_PROXY to route through another proxy)."
+        )
+    err.__cause__ = e
+    return err
+
+
 async def request(method: str, url: str, **kwargs: Any) -> httpx.Response:
     """Send a request; network failures become ApiError. HTTP status is left to the caller."""
     client, limit = _get_client()
-    host = httpx.URL(url).host
     try:
         async with limit:
             return await client.request(method, url, **kwargs)
-    except httpx.TimeoutException as e:
-        raise ApiError(f"{host} did not answer in time. Try again in a moment.") from e
     except httpx.RequestError as e:
-        raise ApiError(
-            f"Could not reach {host} ({type(e).__name__}). Check the internet connection; "
-            "Bale may refuse some non-Iranian networks (set BALE_MCP_PROXY to route through another proxy)."
-        ) from e
+        raise _network_error(e, httpx.URL(url).host) from e
+
+
+async def download(url: str, max_bytes: int) -> tuple[int, bytes]:
+    """GET a file as (status, body), streaming so a body over max_bytes aborts early with ApiError."""
+    client, limit = _get_client()
+    host = httpx.URL(url).host
+    try:
+        async with limit, client.stream("GET", url) as r:
+            if r.status_code != 200:
+                return r.status_code, b""
+            body = bytearray()
+            async for chunk in r.aiter_bytes():
+                body += chunk
+                if len(body) > max_bytes:
+                    raise ApiError(f"File is larger than {max_bytes // (1024 * 1024)} MB; download aborted.")
+            return 200, bytes(body)
+    except httpx.RequestError as e:
+        raise _network_error(e, host) from e
