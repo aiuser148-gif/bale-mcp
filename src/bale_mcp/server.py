@@ -95,22 +95,17 @@ for t in mcp._tool_manager.list_tools():
 def main() -> None:
     import os
 
-    # Local use (Claude Desktop etc.): plain stdio, unchanged.
     if os.environ.get("MCP_TRANSPORT") != "http":
         mcp.run()
         return
 
-    # Hosted use (Render): streamable HTTP, protected by a bearer token.
     import uvicorn
 
-    secret = os.environ.get("MCP_AUTH_TOKEN")
-    if not secret:
-        raise SystemExit("MCP_AUTH_TOKEN must be set when MCP_TRANSPORT=http")
-
+    secret = os.environ.get("MCP_AUTH_TOKEN")  # optional: no token = no auth
     inner = mcp.streamable_http_app()  # serves /mcp
 
     async def app(scope, receive, send):
-        if scope["type"] == "http":
+        if secret and scope["type"] == "http":
             headers = dict(scope["headers"])
             if headers.get(b"authorization", b"").decode() != f"Bearer {secret}":
                 await send({"type": "http.response.start", "status": 401,
