@@ -93,8 +93,33 @@ for t in mcp._tool_manager.list_tools():
 
 
 def main() -> None:
-    mcp.run()
+    import os
 
+    # Local use (Claude Desktop etc.): plain stdio, unchanged.
+    if os.environ.get("MCP_TRANSPORT") != "http":
+        mcp.run()
+        return
+
+    # Hosted use (Render): streamable HTTP, protected by a bearer token.
+    import uvicorn
+
+    secret = os.environ.get("MCP_AUTH_TOKEN")
+    if not secret:
+        raise SystemExit("MCP_AUTH_TOKEN must be set when MCP_TRANSPORT=http")
+
+    inner = mcp.streamable_http_app()  # serves /mcp
+
+    async def app(scope, receive, send):
+        if scope["type"] == "http":
+            headers = dict(scope["headers"])
+            if headers.get(b"authorization", b"").decode() != f"Bearer {secret}":
+                await send({"type": "http.response.start", "status": 401,
+                            "headers": [(b"content-type", b"text/plain")]})
+                await send({"type": "http.response.body", "body": b"unauthorized"})
+                return
+        await inner(scope, receive, send)
+
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8000")))
 
 if __name__ == "__main__":
     main()
