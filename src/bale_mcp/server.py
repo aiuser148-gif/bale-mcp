@@ -43,12 +43,26 @@ STATEFUL_TOOLS = {
     "bot_download_file",
 }
 
+# mcp = MCPServer(
+#     "bale-mcp",
+#     title="Bale Bot",
+#     instructions=INSTRUCTIONS,
+#     version=__version__,
+#     website_url="https://github.com/sepehr071/bale-mcp",
+# )
+from mcp.server.transport_security import TransportSecuritySettings
+
 mcp = MCPServer(
     "bale-mcp",
     title="Bale Bot",
     instructions=INSTRUCTIONS,
     version=__version__,
     website_url="https://github.com/sepehr071/bale-mcp",
+    transport_security=TransportSecuritySettings(
+        enable_dns_rebinding_protection=True,
+        allowed_hosts=["bale-mcp.onrender.com", "localhost:*", "127.0.0.1:*"],
+        allowed_origins=["https://bale-mcp.onrender.com", "https://chatgpt.com", "https://chat.openai.com"],
+    ),
 )
 
 
